@@ -27,7 +27,7 @@ import {
 type Kids = Parameters<typeof Stack>[0]["children"];
 type Persona = "guest" | "member" | "admin";
 type Tab = "项目" | "善款" | "我的";
-type GiftFilter = "全部" | "未绑定" | "已绑定" | "已作废";
+type GiftFilter = "全部" | "已安排" | "尚未安排";
 type ProjectFilter = "全部" | "进行中" | "已完成" | "已关闭" | "超支";
 type ScreenId =
   | "u-projects"
@@ -56,12 +56,14 @@ type ScreenId =
   | "a-project-edit"
   | "a-add-person"
   | "a-expense"
+  | "a-expense-edit"
   | "a-progress"
   | "a-progress-edit"
   | "a-people"
   | "a-person-new"
   | "a-person"
   | "a-files"
+  | "a-voided"
   | "a-admins";
 
 type Project = {
@@ -90,7 +92,6 @@ type Gift = {
   bio: string;
   amount: number;
   date: string;
-  status: "未绑定" | "已绑定" | "已作废";
   projectId: string;
   remark: string;
   userEdited: boolean;
@@ -143,10 +144,13 @@ type Ctx = {
   setLockPerson: (v: boolean) => void;
   pendingUnclaim: string;
   setPendingUnclaim: (key: string) => void;
-  pendingDelete: string;
-  setPendingDelete: (id: string) => void;
+  goneExpenses: string[];
+  dropExpense: (no: string) => void;
   identityEdits: Record<string, { anon: boolean; display: string; bio: string }>;
   saveIdentityEdit: (id: string, anon: boolean, display: string, bio: string) => void;
+  goneGifts: string[];
+  voided: { id: string; at: string; reason: string }[];
+  dropGift: (id: string, reason: string, at?: string) => void;
   passwordHints: Record<string, string>;
   setPasswordHint: (phone: string, hint: string) => void;
   adminWide: boolean;
@@ -206,28 +210,8 @@ const GIFTS: Gift[] = [
     bio: "",
     amount: 80,
     date: "2026-10-10",
-    status: "未绑定",
     projectId: "",
     remark: "",
-    userEdited: false,
-    editedAt: "",
-  },
-  {
-    id: "sk5",
-    no: "SK202610030005",
-    order: "4200001100202610030005",
-    platform: "微信支付",
-    pid: "oAbc123",
-    phone: "13800000000",
-    mask: "138****0000",
-    display: "",
-    anon: true,
-    bio: "",
-    amount: 50,
-    date: "2026-10-03",
-    status: "已作废",
-    projectId: "",
-    remark: "渠道重复。作废原因：重复录入",
     userEdited: false,
     editedAt: "",
   },
@@ -244,7 +228,6 @@ const GIFTS: Gift[] = [
     bio: "希望用于助学",
     amount: 500.5,
     date: "2026-10-02",
-    status: "已绑定",
     projectId: "xm1",
     remark: "单笔录入",
     userEdited: true,
@@ -263,7 +246,6 @@ const GIFTS: Gift[] = [
     bio: "",
     amount: 200,
     date: "2026-10-01",
-    status: "已绑定",
     projectId: "xm1",
     remark: "来自公众号转发",
     userEdited: false,
@@ -282,7 +264,6 @@ const GIFTS: Gift[] = [
     bio: "",
     amount: 200,
     date: "2026-09-20",
-    status: "已绑定",
     projectId: "xm2",
     remark: "",
     userEdited: false,
@@ -301,7 +282,6 @@ const GIFTS: Gift[] = [
     bio: "",
     amount: 40,
     date: "2026-10-11",
-    status: "未绑定",
     projectId: "",
     remark: "",
     userEdited: false,
@@ -320,7 +300,6 @@ const GIFTS: Gift[] = [
     bio: "",
     amount: 30,
     date: "2026-09-28",
-    status: "已绑定",
     projectId: "xm1",
     remark: "",
     userEdited: false,
@@ -339,7 +318,6 @@ const GIFTS: Gift[] = [
     bio: "",
     amount: 20,
     date: "2026-09-25",
-    status: "已绑定",
     projectId: "xm1",
     remark: "",
     userEdited: false,
@@ -358,7 +336,6 @@ const GIFTS: Gift[] = [
     bio: "",
     amount: 15,
     date: "2026-09-22",
-    status: "已绑定",
     projectId: "xm1",
     remark: "",
     userEdited: false,
@@ -377,7 +354,6 @@ const GIFTS: Gift[] = [
     bio: "",
     amount: 10,
     date: "2026-09-18",
-    status: "已绑定",
     projectId: "xm1",
     remark: "",
     userEdited: false,
@@ -413,12 +389,47 @@ const GIFTS: Gift[] = [
     bio: "",
     amount,
     date,
-    status: "未绑定" as const,
     projectId: "",
     remark: "",
     userEdited: false,
     editedAt: "",
   })),
+  {
+    id: "sk27",
+    no: "SK202610030027",
+    order: "4200001100202610030027",
+    platform: "微信支付",
+    pid: "oAbc123",
+    phone: "13800000000",
+    mask: "138****0000",
+    display: "",
+    anon: true,
+    bio: "",
+    amount: 60,
+    date: "2026-10-03",
+    projectId: "xm1",
+    remark: "渠道重复",
+    userEdited: false,
+    editedAt: "",
+  },
+  {
+    id: "sk28",
+    no: "SK202610040028",
+    order: "2026100422001400000028",
+    platform: "支付宝",
+    pid: "2088xxxx",
+    phone: "13900000000",
+    mask: "139****0000",
+    display: "张先生",
+    anon: false,
+    bio: "希望用于助学",
+    amount: 120,
+    date: "2026-10-04",
+    projectId: "",
+    remark: "",
+    userEdited: true,
+    editedAt: "2026-10-12 14:20",
+  },
 ];
 
 const PEOPLE: Person[] = [
@@ -439,19 +450,18 @@ const PEOPLE: Person[] = [
 ];
 
 const EXPENSES = [
-  { projectId: "xm1", no: "KX202610150001", date: "2026-10-15", cat: "物资采购", amount: 820, note: "书本与文具", voided: false },
-  { projectId: "xm1", no: "KX202610140002", date: "2026-10-14", cat: "交通食宿", amount: 60, note: "探访路费", voided: true },
-  { projectId: "xm1", no: "KX202610120003", date: "2026-10-12", cat: "交通食宿", amount: 40, note: "交通补助", voided: false },
-  { projectId: "xm1", no: "KX202610110004", date: "2026-10-11", cat: "物资采购", amount: 30, note: "文具补充", voided: false },
-  { projectId: "xm1", no: "KX202610100005", date: "2026-10-10", cat: "人员补贴", amount: 20, note: "发放协助", voided: false },
-  { projectId: "xm1", no: "KX202610090006", date: "2026-10-09", cat: "其他", amount: 15, note: "邮寄", voided: false },
-  { projectId: "xm1", no: "KX202610080007", date: "2026-10-08", cat: "物资采购", amount: 25, note: "练习本", voided: false },
-  { projectId: "xm1", no: "KX202610070008", date: "2026-10-07", cat: "其他", amount: 10, note: "打印", voided: false },
-  { projectId: "xm1", no: "KX202610060009", date: "2026-10-06", cat: "物资采购", amount: 10, note: "本子", voided: false },
-  { projectId: "xm1", no: "KX202610050010", date: "2026-10-05", cat: "交通食宿", amount: 10, note: "公交", voided: false },
-  { projectId: "xm1", no: "KX202610040011", date: "2026-10-04", cat: "其他", amount: 10, note: "通讯", voided: false },
-  { projectId: "xm1", no: "KX202610030012", date: "2026-10-03", cat: "物资采购", amount: 10, note: "试卷", voided: false },
-  { projectId: "xm2", no: "KX202610090001", date: "2026-10-09", cat: "人员补贴", amount: 180, note: "义诊志愿者补贴", voided: false },
+  { projectId: "xm1", no: "KX202610150001", date: "2026-10-15", cat: "物资采购", amount: 820, note: "书本与文具" },
+  { projectId: "xm1", no: "KX202610120003", date: "2026-10-12", cat: "交通食宿", amount: 40, note: "交通补助" },
+  { projectId: "xm1", no: "KX202610110004", date: "2026-10-11", cat: "物资采购", amount: 30, note: "文具补充" },
+  { projectId: "xm1", no: "KX202610100005", date: "2026-10-10", cat: "人员补贴", amount: 20, note: "发放协助" },
+  { projectId: "xm1", no: "KX202610090006", date: "2026-10-09", cat: "其他", amount: 15, note: "邮寄" },
+  { projectId: "xm1", no: "KX202610080007", date: "2026-10-08", cat: "物资采购", amount: 25, note: "练习本" },
+  { projectId: "xm1", no: "KX202610070008", date: "2026-10-07", cat: "其他", amount: 10, note: "打印" },
+  { projectId: "xm1", no: "KX202610060009", date: "2026-10-06", cat: "物资采购", amount: 10, note: "本子" },
+  { projectId: "xm1", no: "KX202610050010", date: "2026-10-05", cat: "交通食宿", amount: 10, note: "公交" },
+  { projectId: "xm1", no: "KX202610040011", date: "2026-10-04", cat: "其他", amount: 10, note: "通讯" },
+  { projectId: "xm1", no: "KX202610030012", date: "2026-10-03", cat: "物资采购", amount: 10, note: "试卷" },
+  { projectId: "xm2", no: "KX202610090001", date: "2026-10-09", cat: "人员补贴", amount: 180, note: "义诊志愿者补贴" },
 ];
 
 const UPDATES = [
@@ -480,8 +490,9 @@ const ADMIN_PAGES: { id: ScreenId; label: string; section: string }[] = [
   { id: "a-project-edit", label: "编辑项目", section: "3.14" },
   { id: "a-add-person", label: "追加受益人", section: "3.15" },
   { id: "a-expense", label: "登记开销", section: "3.16" },
+  { id: "a-expense-edit", label: "编辑开销", section: "3.16" },
   { id: "a-progress", label: "发布进展", section: "3.17" },
-  { id: "a-pick-gift", label: "选择未绑定善款", section: "3.10" },
+  { id: "a-pick-gift", label: "选择尚未安排的善款", section: "3.10" },
   { id: "a-gifts", label: "善款列表", section: "3.3" },
   { id: "a-entry", label: "单笔录入", section: "3.4" },
   { id: "a-import", label: "批量导入", section: "3.5" },
@@ -495,10 +506,32 @@ const ADMIN_PAGES: { id: ScreenId; label: string; section: string }[] = [
   { id: "a-person-new", label: "新建受益人", section: "3.18" },
   { id: "a-person", label: "受益人详情", section: "3.19" },
   { id: "a-files", label: "导入文档", section: "3.22" },
+  { id: "a-voided", label: "作废善款", section: "3.23" },
   { id: "a-admins", label: "管理员名单", section: "3.20" },
 ];
 
 type BatchFile = { id: string; name: string; at: string; rows: number };
+type Voided = { id: string; at: string; reason: string };
+
+const VOIDED_SEED: Voided[] = [
+  { id: "sk28", at: "2026-10-11 11:42", reason: "录错项目" },
+  { id: "sk27", at: "2026-10-11 11:40", reason: "重复录入" },
+];
+
+function voidedRemark(remark: string, reason: string): string {
+  const note = remark.trim();
+  const why = reason.trim();
+  if (!why) return note || "无";
+  if (!note) return `作废原因：${why}`;
+  return `${note}。作废原因：${why}`;
+}
+
+function voidStamp(at?: string): string {
+  if (at) return at;
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+}
 
 const IMPORT_FILE_SEED: BatchFile[] = [
   { id: "imp1", name: "善款导入-20261012.xlsx", at: "2026-10-12 09:18", rows: 2 },
@@ -519,6 +552,10 @@ function projectById(id: string): Project | undefined {
 
 function withoutGone(gone: string[]): Project[] {
   return PROJECTS.filter((project) => !gone.includes(project.id));
+}
+
+function giftProjectId(projectId: string, gone: string[]): string {
+  return projectId && !gone.includes(projectId) ? projectId : "";
 }
 
 function giftById(id: string): Gift {
@@ -563,8 +600,8 @@ function AmountLine(props: { project: Project }) {
   );
 }
 
-function liveGifts(list: Gift[]): Gift[] {
-  return list.filter((g) => g.status !== "已作废");
+function keptGifts(gone: string[]): Gift[] {
+  return GIFTS.filter((gift) => !gone.includes(gift.id));
 }
 
 function sameIdentity(a: Gift, b: Gift): boolean {
@@ -1433,7 +1470,7 @@ function AdminFrame(props: { screen: ScreenId; ctx: Ctx; children: Kids; dialog?
     {
       id: "a-projects",
       label: "项目",
-      on: ["a-projects", "a-project-new", "a-project", "a-project-edit", "a-add-person", "a-expense", "a-progress", "a-progress-edit", "a-pick-gift"].includes(props.screen),
+      on: ["a-projects", "a-project-new", "a-project", "a-project-edit", "a-add-person", "a-expense", "a-expense-edit", "a-progress", "a-progress-edit", "a-pick-gift"].includes(props.screen),
     },
     {
       id: "a-gifts",
@@ -1447,10 +1484,11 @@ function AdminFrame(props: { screen: ScreenId; ctx: Ctx; children: Kids; dialog?
       on: ["a-identities", "a-identity-new", "a-identity", "a-identity-edit"].includes(props.screen),
     },
     { id: "a-files", label: "导入文档", on: props.screen === "a-files" },
+    { id: "a-voided", label: "作废善款", on: props.screen === "a-voided" },
     { id: "a-admins", label: "管理员", on: props.screen === "a-admins" },
   ];
   const primary = items.filter((item) => item.id === "a-projects" || item.id === "a-gifts" || item.id === "a-people");
-  const more = items.filter((item) => item.id === "a-identities" || item.id === "a-files" || item.id === "a-admins");
+  const more = items.filter((item) => item.id === "a-identities" || item.id === "a-files" || item.id === "a-voided" || item.id === "a-admins");
   const moreOn = more.some((item) => item.on);
   const go = (id: ScreenId) => {
     setMoreOpen(false);
@@ -1607,13 +1645,12 @@ function AdminFrame(props: { screen: ScreenId; ctx: Ctx; children: Kids; dialog?
 }
 
 function PublicGiftLine(props: { g: Gift; ctx: Ctx; linkProject: boolean; backTo?: ScreenId }) {
-  const project = props.g.status === "已绑定" && props.g.projectId ? projectById(props.g.projectId) : undefined;
-  const bound = props.g.status === "已绑定";
+  const [gone] = useCanvasState<string[]>("gone-projects", []);
+  const projectId = giftProjectId(props.g.projectId, gone);
+  const project = projectId ? projectById(projectId) : undefined;
   return (
     <RecordCard
       name={publicName(props.g)}
-      status={props.linkProject ? (bound ? "已绑定" : "未绑定") : undefined}
-      statusActive={props.linkProject ? bound : undefined}
       marks={isMyGift(props.ctx, props.g) ? [{ label: "我的捐款", active: true }] : undefined}
       date={props.g.date}
     >
@@ -1686,8 +1723,8 @@ function UserProjects(props: { ctx: Ctx }) {
 
 function UserProject(props: { ctx: Ctx }) {
   const project = projectById(props.ctx.projectId) ?? PROJECTS[1];
-  const gifts = liveGifts(GIFTS).filter((g) => g.projectId === project.id).sort((a, b) => b.date.localeCompare(a.date));
-  const expenses = EXPENSES.filter((e) => e.projectId === project.id && !e.voided).sort((a, b) => b.date.localeCompare(a.date));
+  const gifts = keptGifts(props.ctx.goneGifts).filter((g) => g.projectId === project.id).sort((a, b) => b.date.localeCompare(a.date));
+  const expenses = EXPENSES.filter((e) => e.projectId === project.id && !props.ctx.goneExpenses.includes(e.no)).sort((a, b) => b.date.localeCompare(a.date));
   const updates = UPDATES.filter((u) => u.projectId === project.id).sort((a, b) => b.date.localeCompare(a.date));
   const back = props.ctx.returnTo.startsWith("u-") ? props.ctx.returnTo : "u-projects";
   return (
@@ -1741,16 +1778,17 @@ function UserProject(props: { ctx: Ctx }) {
 
 function UserGifts(props: { ctx: Ctx }) {
   const fields: QueryField[] = [
-    { id: "bind", label: "绑定状态", kind: "category", choices: "radio", options: ["全部", "已绑定", "未绑定"] },
+    { id: "bind", label: "项目", kind: "category", choices: "radio", options: ["全部", "已安排", "尚未安排"] },
     { id: "from", label: "捐款日期起", kind: "time", placeholder: "YYYY-MM-DD" },
     { id: "to", label: "捐款日期止", kind: "time", placeholder: "YYYY-MM-DD" },
   ];
   const [query, setQuery] = useState<Record<string, string>>(() => blankQuery(fields));
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useCanvasState("page-size", 10);
+  const [gone] = useCanvasState<string[]>("gone-projects", []);
   const bind = query.bind ?? "全部";
-  const filtered = liveGifts(GIFTS)
-    .filter((gift) => bind === "全部" || (bind === "已绑定" ? gift.status === "已绑定" : gift.status === "未绑定"))
+  const filtered = keptGifts(props.ctx.goneGifts)
+    .filter((gift) => bind === "全部" || (bind === "已安排" ? Boolean(giftProjectId(gift.projectId, gone)) : !giftProjectId(gift.projectId, gone)))
     .filter((gift) => inDates(gift.date, queryText(query, "from"), queryText(query, "to")))
     .sort((a, b) => b.date.localeCompare(a.date));
   const rows = takePage(filtered, page, true, pageSize);
@@ -1828,7 +1866,7 @@ function UserLogin(props: { ctx: Ctx }) {
       <Row gap={8} justify="end">
         <Button variant="primary" onClick={signIn}>登录</Button>
       </Row>
-      <Text size="small" tone="tertiary">未登录时没有「进入后台」。启用管理员请先在上方选「启用管理员」，再点登录。</Text>
+      <Text size="small" tone="tertiary">未登录时没有「进入后台」。管理员请先在上方选「管理员」，再点登录。</Text>
       </Stack>
       </div>
       <button
@@ -2125,17 +2163,18 @@ function IncludedProjects(props: { ctx: Ctx }) {
 function UserRecords(props: { ctx: Ctx }) {
   const seed = giftById(props.ctx.donationId);
   const fields: QueryField[] = [
-    { id: "bind", label: "绑定状态", kind: "category", choices: "radio", options: ["全部", "已绑定", "未绑定"] },
+    { id: "bind", label: "项目", kind: "category", choices: "radio", options: ["全部", "已安排", "尚未安排"] },
     { id: "from", label: "捐款日期起", kind: "time", placeholder: "YYYY-MM-DD" },
     { id: "to", label: "捐款日期止", kind: "time", placeholder: "YYYY-MM-DD" },
   ];
   const [query, setQuery] = useState<Record<string, string>>(() => blankQuery(fields));
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useCanvasState("page-size", 10);
+  const [gone] = useCanvasState<string[]>("gone-projects", []);
   const bind = query.bind ?? "全部";
-  const list = liveGifts(GIFTS)
+  const list = keptGifts(props.ctx.goneGifts)
     .filter((gift) => sameIdentity(gift, seed))
-    .filter((gift) => bind === "全部" || (bind === "已绑定" ? gift.status === "已绑定" : gift.status === "未绑定"))
+    .filter((gift) => bind === "全部" || (bind === "已安排" ? Boolean(giftProjectId(gift.projectId, gone)) : !giftProjectId(gift.projectId, gone)))
     .filter((gift) => inDates(gift.date, queryText(query, "from"), queryText(query, "to")))
     .sort((a, b) => b.date.localeCompare(a.date));
   const rows = takePage(list, page, true, pageSize);
@@ -2149,10 +2188,10 @@ function UserRecords(props: { ctx: Ctx }) {
       <QueryForm wide={false} fields={fields} onApply={(next) => { setQuery(next); setPage(1); }} />
       {list.length === 0 ? <Text size="small" tone="secondary">没有符合条件的捐款记录。</Text> : null}
       {rows.map((gift) => {
-        const bound = gift.status === "已绑定";
-        const project = bound && gift.projectId ? projectById(gift.projectId) : undefined;
+        const projectId = giftProjectId(gift.projectId, gone);
+        const project = projectId ? projectById(projectId) : undefined;
         return (
-          <RecordCard key={gift.id} name={yuan(gift.amount)} status={bound ? "已绑定" : "未绑定"} statusActive={bound} date={gift.date}>
+          <RecordCard key={gift.id} name={yuan(gift.amount)} date={gift.date}>
             {project ? (
               <Row justify="start">
                 <Button variant="ghost" onClick={() => props.ctx.showUserProject(project.id, "u-records")}>{project.name}</Button>
@@ -2191,8 +2230,7 @@ function UserBind(props: { ctx: Ctx }) {
           variant="primary"
           onClick={() => {
             const pid = props.ctx.bindPid.trim();
-            const rows = GIFTS.filter((g) => g.platform === props.ctx.bindPlatform && g.pid === pid);
-            const live = rows.filter((g) => g.status !== "已作废");
+            const live = keptGifts(props.ctx.goneGifts).filter((g) => g.platform === props.ctx.bindPlatform && g.pid === pid);
             const owned = props.ctx.persona === "member" && props.ctx.bindPlatform === "支付宝" && pid === "2088xxxx" && !props.ctx.releasedAlipay;
             const ownedWx = props.ctx.persona === "member" && props.ctx.alsoWechat && props.ctx.bindPlatform === "微信支付" && pid === "oAbc123";
             setDup(owned || ownedWx);
@@ -2255,56 +2293,6 @@ function UserEdit(props: { ctx: Ctx }) {
   );
 }
 
-function DeleteProjectDialog(props: { ctx: Ctx }) {
-  const theme = useHostTheme();
-  const [gone, setGone] = useCanvasState<string[]>("gone-projects", []);
-  const project = projectById(props.ctx.pendingDelete);
-  const name = project?.name ?? "这个项目";
-  return (
-    <div
-      style={{
-        position: "absolute",
-        inset: 0,
-        background: theme.fill.primary,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 20,
-        zIndex: 2,
-      }}
-    >
-      <div
-        style={{
-          width: "100%",
-          maxWidth: 420,
-          background: theme.bg.elevated,
-          border: `1px solid ${theme.stroke.primary}`,
-          borderRadius: theme.radius.lg,
-          padding: 16,
-        }}
-      >
-        <Stack gap={8}>
-          <Text weight="semibold">删除项目</Text>
-          <Text size="small">确认删除「{name}」？确认后，管理端和公开的项目列表都不再展示这个项目。</Text>
-          <Row gap={8} justify="end">
-            <Button variant="ghost" onClick={() => props.ctx.setPendingDelete("")}>取消</Button>
-            <Button
-              variant="primary"
-              onClick={() => {
-                if (project && !gone.includes(project.id)) setGone([...gone, project.id]);
-                props.ctx.setPendingDelete("");
-                props.ctx.open("a-projects", "已删除。公开的项目列表也不再展示。");
-              }}
-            >
-              确认删除
-            </Button>
-          </Row>
-        </Stack>
-      </div>
-    </div>
-  );
-}
-
 function UnclaimDialog(props: { ctx: Ctx }) {
   const theme = useHostTheme();
   const label = props.ctx.pendingUnclaim === "wx" ? "微信支付 · 匿名捐款人" : "支付宝 · 张先生";
@@ -2331,7 +2319,7 @@ function UnclaimDialog(props: { ctx: Ctx }) {
       >
         <Stack gap={8}>
           <Text weight="semibold">解除绑定</Text>
-          <Text size="small">确认解除「{label}」？只影响当前手机号。身份、其他认领、善款和项目绑定都还在。</Text>
+          <Text size="small">确认解除「{label}」？只影响当前手机号。身份、其他认领、善款及其项目都还在。</Text>
           <Row gap={8} justify="end">
             <Button variant="ghost" onClick={() => props.ctx.setPendingUnclaim("")}>取消</Button>
             <Button
@@ -2354,6 +2342,7 @@ function UnclaimDialog(props: { ctx: Ctx }) {
 function GiftDesktopTable(props: { rows: Gift[]; ctx: Ctx }) {
   const theme = useHostTheme();
   const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [gone] = useCanvasState<string[]>("gone-projects", []);
   const cell = {
     padding: "8px 6px",
     borderBottom: `1px solid ${theme.stroke.tertiary}`,
@@ -2365,8 +2354,8 @@ function GiftDesktopTable(props: { rows: Gift[]; ctx: Ctx }) {
     fontSize: 13,
     color: theme.text.primary,
   };
-  const headers = ["善款编号", "金额", "捐款身份姓名", "日期", "状态", "项目", ""];
-  const widths = ["14%", "10%", "14%", "12%", "10%", "14%", "26%"];
+  const headers = ["善款编号", "金额", "捐款身份姓名", "日期", "项目", ""];
+  const widths = ["16%", "12%", "18%", "14%", "16%", "24%"];
   return (
     <table style={{ width: "100%", maxWidth: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
       <colgroup>
@@ -2382,20 +2371,20 @@ function GiftDesktopTable(props: { rows: Gift[]; ctx: Ctx }) {
       <tbody>
         {props.rows.flatMap((gift) => {
           const shown = Boolean(open[gift.id]);
-          const project = gift.projectId ? (projectById(gift.projectId)?.name ?? "—") : "—";
+          const projectId = giftProjectId(gift.projectId, gone);
+          const project = projectId ? (projectById(projectId)?.name ?? "—") : "—";
           const main = (
             <tr key={gift.id}>
               <td style={cell}>{gift.no}</td>
               <td style={cell}>{yuan(gift.amount)}</td>
               <td style={cell}>{publicName(gift)}</td>
               <td style={cell}>{gift.date}</td>
-              <td style={cell}>{gift.status}</td>
               <td style={cell}>{project}</td>
               <td style={{ ...cell, textAlign: "right" }}>
                 <Row gap={6} justify="end" style={{ flexWrap: "nowrap" }}>
                   <Button variant="ghost" style={{ whiteSpace: "nowrap", flex: "0 0 auto", width: "auto" }} onClick={() => setOpen((prev) => ({ ...prev, [gift.id]: !prev[gift.id] }))}>{shown ? "收起" : "展开"}</Button>
                   <Button variant="ghost" style={{ whiteSpace: "nowrap", flex: "0 0 auto", width: "auto" }} onClick={() => props.ctx.showIdentity(identityIdOf(gift))}>打开身份</Button>
-                  {gift.status === "已作废" ? null : <Button variant="secondary" style={{ whiteSpace: "nowrap", flex: "0 0 auto", width: "auto" }} onClick={() => props.ctx.openGift(gift.id, "a-void")}>作废</Button>}
+                  <Button variant="secondary" style={{ whiteSpace: "nowrap", flex: "0 0 auto", width: "auto" }} onClick={() => props.ctx.openGift(gift.id, "a-void")}>作废</Button>
                 </Row>
               </td>
             </tr>
@@ -2403,7 +2392,7 @@ function GiftDesktopTable(props: { rows: Gift[]; ctx: Ctx }) {
           if (!shown) return [main];
           return [main, (
             <tr key={`${gift.id}-more`}>
-              <td colSpan={7} style={cell}>
+              <td colSpan={6} style={cell}>
                 <Text size="small" tone="secondary">捐款平台 {gift.platform} · 订单编号 {gift.order} · 备注 {gift.remark || "无"}</Text>
               </td>
             </tr>
@@ -2416,8 +2405,10 @@ function GiftDesktopTable(props: { rows: Gift[]; ctx: Ctx }) {
 
 function GiftMobileCard(props: { gift: Gift; ctx: Ctx }) {
   const [open, setOpen] = useState(false);
+  const [gone] = useCanvasState<string[]>("gone-projects", []);
   const gift = props.gift;
-  const project = gift.projectId ? (projectById(gift.projectId)?.name ?? "—") : "—";
+  const projectId = giftProjectId(gift.projectId, gone);
+  const project = projectId ? (projectById(projectId)?.name ?? "—") : "—";
   return (
     <RecordCard
       name={`${yuan(gift.amount)} ${publicName(gift)}`}
@@ -2426,12 +2417,12 @@ function GiftMobileCard(props: { gift: Gift; ctx: Ctx }) {
         <>
           <Button variant="ghost" onClick={() => setOpen((value) => !value)}>{open ? "收起" : "展开"}</Button>
           <Button variant="ghost" onClick={() => props.ctx.showIdentity(identityIdOf(gift))}>打开身份</Button>
-          {gift.status === "已作废" ? null : <Button variant="secondary" onClick={() => props.ctx.openGift(gift.id, "a-void")}>作废</Button>}
+          <Button variant="secondary" onClick={() => props.ctx.openGift(gift.id, "a-void")}>作废</Button>
         </>
       }
     >
       <Text size="small" tone="secondary" style={{ overflowWrap: "anywhere" }}>{gift.no}</Text>
-      <Text size="small" tone="secondary">{gift.status} {project}</Text>
+      <Text size="small" tone="secondary">{project === "—" ? "尚未安排" : project}</Text>
       {open ? (
         <>
           <Text size="small" tone="secondary">{gift.platform} {gift.order}</Text>
@@ -2447,19 +2438,22 @@ function AdminGifts(props: { ctx: Ctx }) {
     { id: "order", label: "订单编号", kind: "key", placeholder: "订单编号" },
     { id: "pid", label: "捐款身份平台 ID", kind: "key", placeholder: "捐款身份平台 ID" },
     { id: "who", label: "捐款身份姓名/手机号", kind: "name", placeholder: "姓名或手机号" },
-    { id: "status", label: "绑定状态", kind: "category", options: ["全部", "未绑定", "已绑定", "已作废"] },
+    { id: "arrange", label: "项目", kind: "category", options: ["全部", "已安排", "尚未安排"] },
     { id: "from", label: "捐款日期起", kind: "time", placeholder: "YYYY-MM-DD" },
     { id: "to", label: "捐款日期止", kind: "time", placeholder: "YYYY-MM-DD" },
   ];
   const [query, setQuery] = useState<Record<string, string>>(() => blankQuery(fields));
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useCanvasState("page-size", 10);
-  const status = query.status ?? "全部";
+  const [gone] = useCanvasState<string[]>("gone-projects", []);
+  const arrange = query.arrange ?? "全部";
   const order = queryText(query, "order");
   const pid = queryText(query, "pid");
   const who = queryText(query, "who");
-  const list = GIFTS.filter((gift) => {
-    if (status !== "全部" && gift.status !== status) return false;
+  const list = keptGifts(props.ctx.goneGifts).filter((gift) => {
+    const projectId = giftProjectId(gift.projectId, gone);
+    if (arrange === "已安排" && !projectId) return false;
+    if (arrange === "尚未安排" && projectId) return false;
     if (order && !hasText(gift.order, order)) return false;
     if (pid && !hasText(gift.pid, pid)) return false;
     if (who && !containsQuery(who, [publicName(gift), gift.display, gift.phone, gift.mask])) return false;
@@ -2485,6 +2479,142 @@ function AdminGifts(props: { ctx: Ctx }) {
         <GiftDesktopTable rows={rows} ctx={props.ctx} />
       ) : rows.map((gift) => (
         <GiftMobileCard key={gift.id} gift={gift} ctx={props.ctx} />
+      ))}
+      <Pager page={page} total={list.length} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} infinite={!props.ctx.adminWide} />
+    </Stack>
+  );
+}
+
+function VoidedDesktopTable(props: { rows: { gift: Gift; at: string; reason: string }[]; ctx: Ctx }) {
+  const theme = useHostTheme();
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const cell = {
+    padding: "8px 6px",
+    borderBottom: `1px solid ${theme.stroke.tertiary}`,
+    textAlign: "left" as const,
+    verticalAlign: "middle" as const,
+    whiteSpace: "normal" as const,
+    overflowWrap: "anywhere" as const,
+    wordBreak: "break-word" as const,
+    fontSize: 13,
+    color: theme.text.primary,
+  };
+  const headers = ["善款编号", "金额", "捐款身份姓名", "日期", "作废时间", ""];
+  const widths = ["16%", "12%", "20%", "14%", "18%", "20%"];
+  return (
+    <table style={{ width: "100%", maxWidth: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+      <colgroup>
+        {widths.map((width, index) => <col key={headers[index] || "ops"} style={{ width }} />)}
+      </colgroup>
+      <thead>
+        <tr>
+          {headers.map((header) => (
+            <th key={header || "ops"} style={{ ...cell, color: theme.text.tertiary, fontWeight: 600, fontSize: 12, textAlign: header ? "left" : "right" }}>{header}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {props.rows.flatMap((row) => {
+          const gift = row.gift;
+          const shown = Boolean(open[gift.id]);
+          const remark = voidedRemark(gift.remark, row.reason);
+          const main = (
+            <tr key={gift.id}>
+              <td style={cell}>{gift.no}</td>
+              <td style={cell}>{yuan(gift.amount)}</td>
+              <td style={cell}>{publicName(gift)}</td>
+              <td style={cell}>{gift.date}</td>
+              <td style={cell}>{row.at}</td>
+              <td style={{ ...cell, textAlign: "right" }}>
+                <Row gap={6} justify="end" wrap>
+                  <Button variant="ghost" onClick={() => setOpen((prev) => ({ ...prev, [gift.id]: !prev[gift.id] }))}>{shown ? "收起" : "展开"}</Button>
+                  <Button variant="ghost" onClick={() => props.ctx.showIdentity(identityIdOf(gift))}>打开身份</Button>
+                </Row>
+              </td>
+            </tr>
+          );
+          if (!shown) return [main];
+          return [main, (
+            <tr key={`${gift.id}-more`}>
+              <td colSpan={6} style={cell}>
+                <Text size="small" tone="secondary">捐款平台 {gift.platform} · 订单编号 {gift.order} · 备注 {remark}</Text>
+              </td>
+            </tr>
+          )];
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function VoidedMobileCard(props: { gift: Gift; at: string; reason: string; ctx: Ctx }) {
+  const [open, setOpen] = useState(false);
+  const gift = props.gift;
+  const remark = voidedRemark(gift.remark, props.reason);
+  return (
+    <RecordCard
+      name={`${yuan(gift.amount)} ${publicName(gift)}`}
+      date={gift.date}
+      action={
+        <>
+          <Button variant="ghost" onClick={() => setOpen((value) => !value)}>{open ? "收起" : "展开"}</Button>
+          <Button variant="ghost" onClick={() => props.ctx.showIdentity(identityIdOf(gift))}>打开身份</Button>
+        </>
+      }
+    >
+      <Text size="small" tone="secondary" style={{ overflowWrap: "anywhere" }}>{gift.no}</Text>
+      <Text size="small" tone="secondary">作废时间 {props.at}</Text>
+      {open ? (
+        <>
+          <Text size="small" tone="secondary">{gift.platform} {gift.order}</Text>
+          <Text size="small" tone="secondary" style={{ overflowWrap: "anywhere" }}>{remark}</Text>
+        </>
+      ) : null}
+    </RecordCard>
+  );
+}
+
+function AdminVoided(props: { ctx: Ctx }) {
+  const fields: QueryField[] = [
+    { id: "order", label: "订单编号", kind: "key", placeholder: "订单编号" },
+    { id: "pid", label: "捐款身份平台 ID", kind: "key", placeholder: "捐款身份平台 ID" },
+    { id: "who", label: "捐款身份姓名/手机号", kind: "name", placeholder: "姓名或手机号" },
+    { id: "from", label: "捐款日期起", kind: "time", placeholder: "YYYY-MM-DD" },
+    { id: "to", label: "捐款日期止", kind: "time", placeholder: "YYYY-MM-DD" },
+    { id: "voidFrom", label: "作废日期起", kind: "time", placeholder: "YYYY-MM-DD" },
+    { id: "voidTo", label: "作废日期止", kind: "time", placeholder: "YYYY-MM-DD" },
+  ];
+  const [query, setQuery] = useState<Record<string, string>>(() => blankQuery(fields));
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useCanvasState("voided-page-size", 10);
+  const order = queryText(query, "order");
+  const pid = queryText(query, "pid");
+  const who = queryText(query, "who");
+  const list = props.ctx.voided.flatMap((mark) => {
+    const gift = GIFTS.find((item) => item.id === mark.id);
+    if (!gift) return [];
+    if (order && !hasText(gift.order, order)) return [];
+    if (pid && !hasText(gift.pid, pid)) return [];
+    if (who && !containsQuery(who, [publicName(gift), gift.display, gift.phone, gift.mask])) return [];
+    if (!inDates(gift.date, queryText(query, "from"), queryText(query, "to"))) return [];
+    if (!inDates(mark.at.slice(0, 10), queryText(query, "voidFrom"), queryText(query, "voidTo"))) return [];
+    return [{ gift, at: mark.at, reason: mark.reason }];
+  }).sort((a, b) => b.at.localeCompare(a.at));
+  const rows = takePage(list, page, !props.ctx.adminWide, pageSize);
+  return (
+    <Stack gap={10}>
+      <Notice text={props.ctx.notice} />
+      <QueryForm
+        wide={props.ctx.adminWide}
+        showFold
+        fields={fields}
+        onApply={(next) => { setQuery(next); setPage(1); }}
+      />
+      {list.length === 0 ? <Text tone="secondary">没有符合条件的作废善款。</Text> : null}
+      {props.ctx.adminWide ? (
+        <VoidedDesktopTable rows={rows} ctx={props.ctx} />
+      ) : rows.map((row) => (
+        <VoidedMobileCard key={row.gift.id} gift={row.gift} at={row.at} reason={row.reason} ctx={props.ctx} />
       ))}
       <Pager page={page} total={list.length} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} infinite={!props.ctx.adminWide} />
     </Stack>
@@ -2880,7 +3010,7 @@ function AdminEntry(props: { ctx: Ctx }) {
               setError("订单编号与已有善款重复。未保存。");
               return;
             }
-            props.ctx.open("a-gifts", `已挂在「${picked.platform} · ${picked.pid}」下，身份资料未改。新善款为未绑定。`);
+            props.ctx.open("a-gifts", `已挂在「${picked.platform} · ${picked.pid}」下，身份资料未改。新善款尚未安排到项目。`);
           }}
         >
           保存
@@ -2923,7 +3053,7 @@ function AdminImport(props: { ctx: Ctx }) {
   if (step === "done") {
     return (
       <Stack gap={8}>
-        <Callout tone="success" title="本批已写入">2 行全部通过，新增 2 笔未绑定善款。原 Excel 已存入导入目录。任一行失败时不会到达此页，也不保存文件。</Callout>
+        <Callout tone="success" title="本批已写入">2 行全部通过，新增 2 笔尚未安排到项目的善款。原 Excel 已存入导入目录。任一行失败时不会到达此页，也不保存文件。</Callout>
         <Text size="small">写入了手机号的身份：该号码已有登录的，会立即出现在对应用户的捐赠身份里；还没登录过的，下次登录再认领。旧认领保留。</Text>
         <Row gap={8} justify="end">
           <Button variant="ghost" onClick={() => setStep("file")}>再导入一批</Button>
@@ -2941,7 +3071,7 @@ function AdminImport(props: { ctx: Ctx }) {
         <Table
           headers={["行", "身份处理", "结果"]}
           rows={[
-            ["2", "微信支付 oAbc123 已存在，用户未修改", "展示名将更新为「张三」。手机号将写入。匿名和个人说明不改。新增一笔未绑定善款。"],
+            ["2", "微信支付 oAbc123 已存在，用户未修改", "展示名将更新为「张三」。手机号将写入。匿名和个人说明不改。新增一笔尚未安排到项目的善款。"],
             ["3", "支付宝 2088xxxx 已存在，用户已修改", "展示名本次不覆盖。手机号将写入。匿名和个人说明不改。只新增一笔善款。"],
             ...(bad ? [["4", "平台用户 ID 为空，手机号 123，金额 -1，日期晚于今天", "第 4 行失败"]] as string[][] : []),
           ]}
@@ -2949,7 +3079,7 @@ function AdminImport(props: { ctx: Ctx }) {
           striped
         />
       ) : [
-        ["2", "微信支付 oAbc123 已存在，用户未修改", "展示名将更新为「张三」。手机号将写入。匿名和个人说明不改。新增一笔未绑定善款。"],
+        ["2", "微信支付 oAbc123 已存在，用户未修改", "展示名将更新为「张三」。手机号将写入。匿名和个人说明不改。新增一笔尚未安排到项目的善款。"],
         ["3", "支付宝 2088xxxx 已存在，用户已修改", "展示名本次不覆盖。手机号将写入。匿名和个人说明不改。只新增一笔善款。"],
         ...(bad ? [["4", "平台用户 ID 为空，手机号 123，金额 -1，日期晚于今天", "第 4 行失败"]] : []),
       ].map((row) => (
@@ -2982,14 +3112,15 @@ function AdminCorrect(props: { ctx: Ctx }) {
 }
 
 function VoidGiftFacts(props: { g: Gift; wide: boolean }) {
-  const project = props.g.status === "已绑定" && props.g.projectId ? projectById(props.g.projectId) : undefined;
+  const [gone] = useCanvasState<string[]>("gone-projects", []);
+  const projectId = giftProjectId(props.g.projectId, gone);
+  const project = projectId ? projectById(projectId) : undefined;
   const pairs: [string, string][] = [
     ["善款编号", props.g.no],
     ["订单编号", props.g.order],
     ["金额", yuan(props.g.amount)],
     ["捐款日期", props.g.date],
-    ["绑定状态", props.g.status],
-    ["当前项目", project ? `${project.name} · ${project.no}` : "尚未绑定"],
+    ["当前项目", project ? `${project.name} · ${project.no}` : "尚未安排"],
     ["捐款平台", props.g.platform],
     ["平台用户 ID", props.g.pid],
     ["是否匿名", props.g.anon ? "匿名" : "不匿名"],
@@ -3025,13 +3156,14 @@ function AdminVoid(props: { ctx: Ctx }) {
   const g = edited ? { ...raw, anon: edited.anon, display: edited.display, bio: edited.bio, userEdited: false, editedAt: "" } : raw;
   const [reason, setReason] = useState("");
   const [error, setError] = useState(false);
-  const project = g.status === "已绑定" && g.projectId ? projectById(g.projectId) : undefined;
-  if (g.status === "已作废") {
+  const [gone] = useCanvasState<string[]>("gone-projects", []);
+  const projectId = giftProjectId(g.projectId, gone);
+  const project = projectId ? projectById(projectId) : undefined;
+  if (props.ctx.goneGifts.includes(raw.id)) {
     return (
       <Stack gap={8}>
         <Button variant="ghost" onClick={() => props.ctx.open(props.ctx.giftBack)}>返回</Button>
-        <VoidGiftFacts g={g} wide={props.ctx.adminWide} />
-        <Callout tone="warning">已作废的善款不能再次作废。</Callout>
+        <Callout tone="warning">这条善款已经作废，可以在「作废善款」里查看。</Callout>
       </Stack>
     );
   }
@@ -3039,11 +3171,11 @@ function AdminVoid(props: { ctx: Ctx }) {
     <Stack gap={8}>
       <Button variant="ghost" onClick={() => props.ctx.open(props.ctx.giftBack)}>返回</Button>
       <VoidGiftFacts g={g} wide={props.ctx.adminWide} />
-      <Text size="small">原因会追加到备注末尾，原备注保留。没有单独的作废原因字段。</Text>
+      <Text size="small">确认后从善款列表移出，记入「作废善款」，不再挂在项目上。作废时间取确认当时。作废原因写入这条作废记录的备注，原备注留在前面。</Text>
       {project ? (
-        <Callout tone="info" title="当前已绑定">{`确认后先解除与「${project.name}」的绑定，项目合计减去 ${yuan(g.amount)}，再把状态改为已作废。`}</Callout>
+        <Callout tone="info" title="当前挂在项目上">{`确认后不再挂在「${project.name}」上，合计减去 ${yuan(g.amount)}。`}</Callout>
       ) : (
-        <Text size="small" tone="secondary">当前未绑定，确认后直接改为已作废。</Text>
+        <Text size="small" tone="secondary">当前没有挂到项目。确认后记入「作废善款」。</Text>
       )}
       <Field label="作废原因">
         <TextArea value={reason} onChange={setReason} rows={3} />
@@ -3057,9 +3189,9 @@ function AdminVoid(props: { ctx: Ctx }) {
               setError(true);
               return;
             }
-            const remark = `${g.remark ? `${g.remark}。` : ""}作废原因：${reason.trim()}`;
-            const lead = project ? `已先解除与「${project.name}」的绑定，再改为已作废。` : "已作废。";
-            props.ctx.open(props.ctx.giftBack, `${lead}备注变为「${remark}」。`);
+            props.ctx.dropGift(g.id, reason);
+            const lead = project ? `已作废，不再挂在项目上。「${project.name}」的合计已减去这笔。原因已写入备注。` : "已作废。原因已写入备注。";
+            props.ctx.open(props.ctx.giftBack, lead);
           }}
         >
           确认作废
@@ -3102,11 +3234,12 @@ function AdminVoidBatch(props: { ctx: Ctx }) {
   if (step === "done") {
     return (
       <Stack gap={8}>
-        <Callout tone="success" title="本批已作废">2 行全部通过。未绑定的直接改为已作废；已绑定的先解除项目绑定，再改为已作废。原 Excel 已存入作废目录。任一行失败时不保存文件。</Callout>
-        <Text size="small">每笔备注末尾追加了该行的作废原因，原备注保留。这些善款不再出现在公开页面和「我的」。身份记录还在。</Text>
+        <Callout tone="success" title="本批已作废">2 行全部通过。这些善款已记入「作废善款」，不再挂在项目上。挂过项目的，项目合计已减去对应金额。作废原因写在各条备注里。原 Excel 已存入作废目录。任一行失败时不保存文件。</Callout>
+        <Text size="small">作废时间记在「作废善款」。公开页面和「我的」里看不到。身份记录还在。</Text>
         <Row gap={8} justify="end">
           <Button variant="ghost" onClick={() => setStep("file")}>再作废一批</Button>
           <Button variant="secondary" onClick={() => props.ctx.open("a-files")}>查看导入文档</Button>
+          <Button variant="secondary" onClick={() => props.ctx.open("a-voided")}>查看作废善款</Button>
           <Button variant="primary" onClick={() => props.ctx.open("a-gifts")}>前往善款列表</Button>
         </Row>
       </Stack>
@@ -3120,17 +3253,17 @@ function AdminVoidBatch(props: { ctx: Ctx }) {
         <Table
           headers={["行", "订单编号", "结果"]}
           rows={[
-            ["2", "4200001100202610100003 未绑定", "将直接改为已作废。原因「重复录入」追加到备注末尾，原备注保留。"],
-            ["3", "2026100222001400000001 已绑定", "将先解除与「秋季助学」的绑定，项目合计减去 ¥500.50，再改为已作废。原因「录错项目」追加到备注末尾。"],
-            ...(bad ? [["4", "4200001100202610030005 已作废", "第 4 行失败"]] as string[][] : []),
+            ["2", "4200001100202610100003", "将记入「作废善款」，不挂项目。备注写入作废原因「重复录入」。"],
+            ["3", "2026100222001400000001", "将记入「作废善款」，不再挂在「秋季助学」上，合计减去 ¥500.50。备注写入作废原因「录错项目」。"],
+            ...(bad ? [["4", "4200001100202610030005", "第 4 行失败"]] as string[][] : []),
           ]}
           rowTone={bad ? [undefined, undefined, "danger"] : undefined}
           striped
         />
       ) : [
-        ["2", "4200001100202610100003 未绑定", "将直接改为已作废。原因「重复录入」追加到备注末尾，原备注保留。"],
-        ["3", "2026100222001400000001 已绑定", "将先解除与「秋季助学」的绑定，项目合计减去 ¥500.50，再改为已作废。原因「录错项目」追加到备注末尾。"],
-        ...(bad ? [["4", "4200001100202610030005 已作废", "第 4 行失败"]] : []),
+        ["2", "4200001100202610100003", "将记入「作废善款」，不挂项目。备注写入作废原因「重复录入」。"],
+        ["3", "2026100222001400000001", "将记入「作废善款」，不再挂在「秋季助学」上，合计减去 ¥500.50。备注写入作废原因「录错项目」。"],
+        ...(bad ? [["4", "4200001100202610030005", "第 4 行失败"]] : []),
       ].map((row) => (
         <AdminLine key={row[0]}>
           <Text size="small" weight="semibold">第 {row[0]} 行</Text>
@@ -3138,11 +3271,13 @@ function AdminVoidBatch(props: { ctx: Ctx }) {
           <Text size="small" tone="secondary">{row[2]}</Text>
         </AdminLine>
       ))}
-      <Text size="small" tone="secondary">超过 500 行时不逐行写入。订单编号为空、不存在、本批重复、原因为空或已作废，都算该行失败。已绑定的可以作废。</Text>
-      {bad ? <Callout tone="danger" title="第 4 行">订单编号 4200001100202610030005 已作废，不能再次作废。确认写入不可用，整批不写入。</Callout> : null}
+      <Text size="small" tone="secondary">超过 500 行时不逐行写入。订单编号为空、找不到这笔、本批重复或原因为空，都算该行失败。挂在项目上的也可以作废。作废后不再挂项目，原因写入备注。</Text>
+      {bad ? <Callout tone="danger" title="第 4 行">订单编号 4200001100202610030005 不存在。确认写入不可用，整批不写入。</Callout> : null}
       <Row gap={8} justify="end">
         <Button variant="ghost" onClick={() => setStep("file")}>返回修改文件</Button>
         <Button variant="primary" disabled={bad} onClick={() => {
+          props.ctx.dropGift("sk3", "重复录入", "2026-10-19 10:27");
+          props.ctx.dropGift("sk2", "录错项目", "2026-10-19 10:27");
           setVoidFiles((prev) => [{ id: `void-${prev.length + 1}`, name: "善款作废-20261019.xlsx", at: "2026-10-19 10:27", rows: 2 }, ...prev]);
           setStep("done");
         }}>确认写入</Button>
@@ -3179,10 +3314,10 @@ function AdminIdentities(props: { ctx: Ctx }) {
       {list.length === 0 ? <Text size="small" tone="secondary">没有符合条件的捐款身份。</Text> : null}
       {props.ctx.adminWide ? (
         <Table
-          headers={["平台", "平台用户 ID", "展示名", "匿名", "手机号", "用户已修改", "未作废笔数", ""]}
+          headers={["平台", "平台用户 ID", "展示名", "匿名", "手机号", "用户已修改", "笔数", ""]}
           columnAlign={["left", "left", "left", "left", "left", "left", "right", "right"]}
           rows={rows.map((item) => {
-            const count = liveGifts(giftsOf(item)).length;
+            const count = keptGifts(props.ctx.goneGifts).filter((gift) => identityIdOf(gift) === item.id).length;
             return [
               item.platform,
               item.pid,
@@ -3197,7 +3332,7 @@ function AdminIdentities(props: { ctx: Ctx }) {
           striped
         />
       ) : rows.map((item) => {
-        const count = liveGifts(giftsOf(item)).length;
+        const count = keptGifts(props.ctx.goneGifts).filter((gift) => identityIdOf(gift) === item.id).length;
         return (
           <RecordCard
             key={item.id}
@@ -3207,7 +3342,7 @@ function AdminIdentities(props: { ctx: Ctx }) {
             action={<Button variant="ghost" onClick={() => props.ctx.showIdentity(item.id)}>打开</Button>}
           >
             <Text size="small" tone="secondary">{item.platform} · {item.pid}</Text>
-            <Text size="small" tone="secondary">未作废 {count} 笔</Text>
+            <Text size="small" tone="secondary">{count} 笔</Text>
             <Row gap={8} align="center">
               <Text size="small">手机号</Text>
               <Reveal mask={item.mask || "未填写"} full={item.phone} />
@@ -3289,7 +3424,8 @@ function AdminIdentityNew(props: { ctx: Ctx }) {
 
 function AdminIdentity(props: { ctx: Ctx }) {
   const seed = identityById(props.ctx.identityId, props.ctx.identityEdits);
-  const rows = giftsOf(seed);
+  const [gone] = useCanvasState<string[]>("gone-projects", []);
+  const rows = keptGifts(props.ctx.goneGifts).filter((gift) => identityIdOf(gift) === seed.id);
   return (
     <Stack gap={8}>
       <Notice text={props.ctx.notice} />
@@ -3312,26 +3448,28 @@ function AdminIdentity(props: { ctx: Ctx }) {
         infinite={!props.ctx.adminWide}
         fields={[
           { id: "order", label: "订单编号", kind: "key", placeholder: "订单编号" },
-          { id: "status", label: "状态", kind: "category", options: ["全部", "未绑定", "已绑定", "已作废"] },
+          { id: "arrange", label: "项目", kind: "category", options: ["全部", "已安排", "尚未安排"] },
           { id: "from", label: "捐款日期起", kind: "time", placeholder: "YYYY-MM-DD" },
           { id: "to", label: "捐款日期止", kind: "time", placeholder: "YYYY-MM-DD" },
         ]}
         rows={rows}
         match={(gift, values) => {
+          const projectId = giftProjectId(gift.projectId, gone);
           if (queryText(values, "order") && !hasText(gift.order, queryText(values, "order"))) return false;
-          if (values.status && values.status !== "全部" && gift.status !== values.status) return false;
+          if (values.arrange === "已安排" && !projectId) return false;
+          if (values.arrange === "尚未安排" && projectId) return false;
           return inDates(gift.date, queryText(values, "from"), queryText(values, "to"));
         }}
         empty="没有符合条件的善款。"
         idleEmpty="还没有善款。到善款列表单笔录入，并查询添加此身份。"
         columns={{
-          headers: ["订单编号", "善款编号", "金额", "状态", "日期"],
+          headers: ["订单编号", "善款编号", "金额", "项目", "日期"],
           align: ["left", "left", "right", "left", "left"],
           cells: (gift) => [
             gift.order,
             gift.no,
             yuan(gift.amount),
-            gift.status,
+            giftProjectId(gift.projectId, gone) ? (projectById(giftProjectId(gift.projectId, gone))?.name ?? "—") : "尚未安排",
             gift.date,
           ],
         }}
@@ -3339,8 +3477,6 @@ function AdminIdentity(props: { ctx: Ctx }) {
           <RecordCard
             key={gift.id}
             name={publicName(gift)}
-            status={gift.status}
-            statusActive={gift.status === "已绑定"}
             date={gift.date}
           >
             <Text size="small" tone="secondary">{yuan(gift.amount)} · {gift.no}</Text>
@@ -3379,7 +3515,8 @@ function AdminIdentityEdit(props: { ctx: Ctx }) {
 }
 
 function AdminPickGift(props: { ctx: Ctx }) {
-  const pool = GIFTS.filter((gift) => gift.status === "未绑定").slice().sort((a, b) => b.date.localeCompare(a.date));
+  const [gone] = useCanvasState<string[]>("gone-projects", []);
+  const pool = keptGifts(props.ctx.goneGifts).filter((gift) => !giftProjectId(gift.projectId, gone)).slice().sort((a, b) => b.date.localeCompare(a.date));
   const fields: QueryField[] = [
     { id: "order", label: "订单编号", kind: "key", placeholder: "订单编号" },
     { id: "no", label: "善款编号", kind: "key", placeholder: "善款编号" },
@@ -3401,10 +3538,10 @@ function AdminPickGift(props: { ctx: Ctx }) {
   return (
     <Stack gap={8}>
       <Button variant="ghost" onClick={() => props.ctx.open("a-project")}>返回</Button>
-      <Text size="small">未作废且未绑定的善款按捐款日期倒序分页。桌面每页 10 条，移动每页 5 条。也可按订单编号、善款编号或平台用户 ID 查询。绑定的是全额。</Text>
+      <Text size="small">还没挂到项目上的善款，按捐款日期从新到旧分页。桌面每页 10 条，移动每页 5 条。也可按订单编号、善款编号或平台用户 ID 查询。绑定的是全额。</Text>
       <QueryForm wide={props.ctx.adminWide} fields={fields} onApply={(next) => { setQuery(next); setPage(1); }} />
-      {pool.length === 0 ? <Text size="small" tone="secondary">当前没有未绑定善款。</Text> : null}
-      {pool.length > 0 && active && hits.length === 0 ? <Text size="small" tone="secondary">没有匹配的未绑定善款。</Text> : null}
+      {pool.length === 0 ? <Text size="small" tone="secondary">当前没有尚未安排的善款。</Text> : null}
+      {pool.length > 0 && active && hits.length === 0 ? <Text size="small" tone="secondary">没有匹配的尚未安排善款。</Text> : null}
       {hits.length > 0 && props.ctx.adminWide ? (
         <Table
           headers={["订单编号", "善款编号", "金额", "日期", "平台", "平台用户 ID", "展示名", ""]}
@@ -3426,7 +3563,6 @@ function AdminPickGift(props: { ctx: Ctx }) {
         <RecordCard
           key={gift.id}
           name={publicName(gift)}
-          status="未绑定"
           date={gift.date}
           action={<Button variant="primary" onClick={confirm}>确认</Button>}
         >
@@ -3464,10 +3600,7 @@ function AdminProjects(props: { ctx: Ctx }) {
   }).slice().sort((a, b) => b.start.localeCompare(a.start));
   const rows = takePage(list, page, !props.ctx.adminWide, pageSize);
   const actions = (project: Project) => (
-    <>
-      <Button variant="ghost" onClick={() => props.ctx.setPendingDelete(project.id)}>删除</Button>
-      <Button variant="secondary" onClick={() => props.ctx.showAdminProject(project.id)}>打开</Button>
-    </>
+    <Button variant="secondary" onClick={() => props.ctx.showAdminProject(project.id)}>打开</Button>
   );
   return (
     <Stack gap={10}>
@@ -3569,6 +3702,7 @@ function AdminProject(props: { ctx: Ctx }) {
   const [goneUpdates, setGoneUpdates] = useState<string[]>([]);
   const [releasedGifts, setReleasedGifts] = useState<string[]>([]);
   const [, setEditNo] = useCanvasState("progress-edit", "");
+  const [, setExpenseNo] = useCanvasState("expense-edit", "");
   const people = PEOPLE.filter((p) => p.projects.includes(project.id) && !(removed && p.id === "p2"));
   const running = status === "进行中";
   const wide = props.ctx.adminWide;
@@ -3581,8 +3715,12 @@ function AdminProject(props: { ctx: Ctx }) {
     setGoneUpdates((prev) => (prev.includes(no) ? prev : [...prev, no]));
     setMsg("已删除。公开页面也不再展示。");
   };
-  const boundGifts = liveGifts(GIFTS)
-    .filter((gift) => gift.projectId === project.id && gift.status === "已绑定" && !releasedGifts.includes(gift.id))
+  const editExpense = (no: string) => {
+    setExpenseNo(no);
+    props.ctx.open("a-expense-edit");
+  };
+  const boundGifts = keptGifts(props.ctx.goneGifts)
+    .filter((gift) => gift.projectId === project.id && !releasedGifts.includes(gift.id))
     .sort((a, b) => b.date.localeCompare(a.date));
   const removePerson = (personId: string) => (
     <Button
@@ -3605,7 +3743,7 @@ function AdminProject(props: { ctx: Ctx }) {
       <Button variant="ghost" onClick={() => props.ctx.openGift(gift.id, "a-void")}>作废</Button>
       <Button variant="secondary" onClick={() => {
         setReleasedGifts((prev) => (prev.includes(gift.id) ? prev : [...prev, gift.id]));
-        setMsg("已解除绑定。善款回到未绑定，项目合计会减去这笔全额。");
+        setMsg("已解除。这笔不再挂在项目上，合计会减去这笔全额。");
       }}>解除绑定</Button>
     </>
   );
@@ -3753,15 +3891,35 @@ function AdminProject(props: { ctx: Ctx }) {
         fold={!wide}
         step={wide ? undefined : 5}
         action={<Button variant="primary" onClick={() => props.ctx.open("a-expense")}>登记开销</Button>}
-        rows={EXPENSES.filter((expense) => expense.projectId === project.id).sort((a, b) => b.date.localeCompare(a.date))}
+        rows={EXPENSES.filter((expense) => expense.projectId === project.id && !props.ctx.goneExpenses.includes(expense.no)).sort((a, b) => b.date.localeCompare(a.date))}
         empty="暂无开销。"
         columns={{
-          headers: ["开销编号", "日期", "类别", "金额", "说明", "状态"],
-          align: ["left", "left", "left", "right", "left", "left"],
-          cells: (expense) => [expense.no, expense.date, expense.cat, yuan(expense.amount), expense.note, expense.voided ? "已作废" : "有效"],
+          headers: ["开销编号", "日期", "类别", "金额", "说明", ""],
+          align: ["left", "left", "left", "right", "left", "right"],
+          cells: (expense) => [
+            expense.no,
+            expense.date,
+            expense.cat,
+            yuan(expense.amount),
+            expense.note,
+            <Row key={`${expense.no}-ops`} gap={6} justify="end" wrap>
+              <Button variant="ghost" onClick={() => editExpense(expense.no)}>编辑</Button>
+              <Button variant="secondary" onClick={() => { props.ctx.dropExpense(expense.no); setMsg("已删除。公开页面也不再展示，合计会减去这笔。"); }}>删除</Button>
+            </Row>,
+          ],
         }}
         render={(expense) => (
-          <RecordCard key={expense.no} name={expense.note || expense.cat} status={expense.voided ? "已作废" : "有效"} statusActive={!expense.voided} date={expense.date}>
+          <RecordCard
+            key={expense.no}
+            name={expense.note || expense.cat}
+            date={expense.date}
+            action={
+              <>
+                <Button variant="ghost" onClick={() => editExpense(expense.no)}>编辑</Button>
+                <Button variant="secondary" onClick={() => { props.ctx.dropExpense(expense.no); setMsg("已删除。公开页面也不再展示，合计会减去这笔。"); }}>删除</Button>
+              </>
+            }
+          >
             <Text size="small" tone="secondary">{expense.cat} · {yuan(expense.amount)} · {expense.no}</Text>
           </RecordCard>
         )}
@@ -3819,12 +3977,22 @@ function AdminAddPerson(props: { ctx: Ctx }) {
   );
 }
 
-function AdminExpense(props: { ctx: Ctx }) {
-  const [date, setDate] = useState("2026-10-19");
-  const [cat, setCat] = useState("物资采购");
-  const [amount, setAmount] = useState("");
-  const [note, setNote] = useState("");
+function AdminExpense(props: { ctx: Ctx; mode?: "edit" }) {
+  const [editNo] = useCanvasState("expense-edit", "");
+  const editing = props.mode === "edit" ? EXPENSES.find((item) => item.no === editNo && !props.ctx.goneExpenses.includes(item.no)) : undefined;
+  const [date, setDate] = useState(editing?.date ?? "2026-10-19");
+  const [cat, setCat] = useState(editing?.cat ?? "物资采购");
+  const [amount, setAmount] = useState(editing ? String(editing.amount) : "");
+  const [note, setNote] = useState(editing?.note ?? "");
   const [error, setError] = useState("");
+  if (props.mode === "edit" && !editing) {
+    return (
+      <Stack gap={8}>
+        <Button variant="ghost" onClick={() => props.ctx.open("a-project")}>返回详情</Button>
+        <Callout tone="warning">这条开销已经不在。</Callout>
+      </Stack>
+    );
+  }
   return (
     <Stack gap={8}>
       <Button variant="ghost" onClick={() => props.ctx.open("a-project")}>返回</Button>
@@ -3849,7 +4017,7 @@ function AdminExpense(props: { ctx: Ctx }) {
               setError("请填写不晚于今天的日期、类别、大于 0 的金额，以及公开说明。");
               return;
             }
-            props.ctx.open("a-project", n > 1000 ? "已保存。结余为负，页面标记超支。" : "已登记开销，合计与结余已重算。");
+            props.ctx.open("a-project", props.mode === "edit" ? "开销已更新，合计与结余已重算。" : n > 1000 ? "已保存。结余为负，页面标记超支。" : "已登记开销，合计与结余已重算。");
           }}
         >
           保存
@@ -4090,40 +4258,36 @@ function AdminFiles(props: { ctx: Ctx }) {
 
 function AdminAdmins(props: { ctx: Ctx }) {
   const admins = [
-    { name: "周宁", mask: "138****1001", phone: "13800001001", status: "启用" },
-    { name: "陈可", mask: "139****1002", phone: "13900001002", status: "停用" },
+    { name: "周宁", mask: "138****1001", phone: "13800001001" },
   ];
   const fields: QueryField[] = [
     { id: "phone", label: "手机号", kind: "key", placeholder: "手机号" },
     { id: "name", label: "姓名", kind: "name", placeholder: "姓名" },
-    { id: "status", label: "状态", kind: "category", options: ["全部", "启用", "停用"] },
   ];
   const [query, setQuery] = useState<Record<string, string>>(() => blankQuery(fields));
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useCanvasState("page-size", 10);
   const name = queryText(query, "name");
   const phone = queryText(query, "phone");
-  const status = query.status ?? "全部";
   const list = admins.filter((admin) => {
     if (!hasText(admin.name, name)) return false;
     if (phone && !containsQuery(phone, [admin.phone, admin.mask])) return false;
-    if (status !== "全部" && admin.status !== status) return false;
     return true;
   });
   const rows = takePage(list, page, !props.ctx.adminWide, pageSize);
   return (
     <Stack gap={8}>
-      <Callout tone="info">新增和停用由技术人员直接修改数据库。本页没有新增、编辑、停用、删除。</Callout>
+      <Callout tone="info">管理员没有状态。新增就是新录入一条记录。不再使用时直接删除这条记录。本页只读，没有新增、编辑、删除。</Callout>
       <QueryForm wide={props.ctx.adminWide} fields={fields} onApply={(next) => { setQuery(next); setPage(1); }} />
       {list.length === 0 ? <Text size="small" tone="secondary">没有符合条件的管理员。</Text> : null}
       {props.ctx.adminWide ? (
         <Table
-          headers={["姓名", "手机号", "状态"]}
-          rows={rows.map((admin) => [admin.name, <Reveal key={admin.phone} mask={admin.mask} full={admin.phone} />, admin.status])}
+          headers={["姓名", "手机号"]}
+          rows={rows.map((admin) => [admin.name, <Reveal key={admin.phone} mask={admin.mask} full={admin.phone} />])}
           striped
         />
       ) : rows.map((admin) => (
-        <RecordCard key={admin.phone} name={admin.name} status={admin.status} statusActive={admin.status === "启用"}>
+        <RecordCard key={admin.phone} name={admin.name}>
           <Row gap={8} align="center">
             <Text size="small">手机号</Text>
             <Reveal mask={admin.mask} full={admin.phone} />
@@ -4131,7 +4295,7 @@ function AdminAdmins(props: { ctx: Ctx }) {
         </RecordCard>
       ))}
       <Pager page={page} total={list.length} onPage={setPage} pageSize={pageSize} onPageSize={setPageSize} infinite={!props.ctx.adminWide} />
-      <Text size="small" tone="tertiary">停用后仍可使用用户登录，但「我的」不再出现「进入后台」，管理端接口也会拒绝。</Text>
+      <Text size="small" tone="tertiary">记录删除后仍可使用用户登录，但「我的」不再出现「进入后台」。已经打开的管理端再请求时也会拒绝。至少保留一名管理员。</Text>
     </Stack>
   );
 }
@@ -4181,7 +4345,7 @@ function Stage(props: { ctx: Ctx }) {
         ) : null}
       </Row>
       {admin ? (
-        <AdminFrame screen={props.ctx.screen} ctx={props.ctx} dialog={props.ctx.pendingDelete ? <DeleteProjectDialog ctx={props.ctx} /> : null}>{body}</AdminFrame>
+        <AdminFrame screen={props.ctx.screen} ctx={props.ctx}>{body}</AdminFrame>
       ) : (
         <Phone
           stretch={props.ctx.screen === "u-login"}
@@ -4254,7 +4418,9 @@ function ScreenBody(props: { ctx: Ctx }) {
     case "a-add-person":
       return <AdminAddPerson ctx={ctx} />;
     case "a-expense":
-      return <AdminExpense ctx={ctx} />;
+      return <AdminExpense key="new" ctx={ctx} />;
+    case "a-expense-edit":
+      return <AdminExpense key="edit" ctx={ctx} mode="edit" />;
     case "a-progress":
       return <AdminProgress key="new" ctx={ctx} />;
     case "a-progress-edit":
@@ -4267,6 +4433,8 @@ function ScreenBody(props: { ctx: Ctx }) {
       return <AdminPerson ctx={ctx} />;
     case "a-files":
       return <AdminFiles ctx={ctx} />;
+    case "a-voided":
+      return <AdminVoided ctx={ctx} />;
     case "a-admins":
       return <AdminAdmins ctx={ctx} />;
     default:
@@ -4292,12 +4460,14 @@ export default function GlimmerPrototype() {
   const [bindPid, setBindPid] = useState("oAbc123");
   const [lockPerson, setLockPerson] = useState(false);
   const [pendingUnclaim, setPendingUnclaim] = useState("");
-  const [pendingDelete, setPendingDelete] = useState("");
+  const [goneExpenses, setGoneExpenses] = useCanvasState<string[]>("gone-expenses", []);
   const [identityEdits, setIdentityEdits] = useCanvasState<Record<string, { anon: boolean; display: string; bio: string }>>("identity-edits", {});
   const [passwordHints, setPasswordHints] = useState<Record<string, string>>({
     "13900000000": "李明",
     "13800001001": "周宁",
   });
+  const [voided, setVoided] = useCanvasState<Voided[]>("voided-gifts", VOIDED_SEED);
+  const goneGifts = voided.map((item) => item.id);
   const [adminWide, setAdminWide] = useCanvasState("admin-wide", true);
   const [giftBack, setGiftBack] = useState<ScreenId>("a-gifts");
 
@@ -4310,7 +4480,6 @@ export default function GlimmerPrototype() {
   const open = (id: ScreenId, nextNotice?: string) => {
     setNotice(nextNotice ?? "");
     setPendingUnclaim("");
-    setPendingDelete("");
     setScreen(id);
   };
   const ctx: Ctx = {
@@ -4368,10 +4537,13 @@ export default function GlimmerPrototype() {
     setLockPerson,
     pendingUnclaim,
     setPendingUnclaim,
-    pendingDelete,
-    setPendingDelete,
+    goneExpenses,
+    dropExpense: (no) => setGoneExpenses((prev) => (prev.includes(no) ? prev : [...prev, no])),
     identityEdits,
     saveIdentityEdit: (id, anon, display, bio) => setIdentityEdits((prev) => ({ ...prev, [id]: { anon, display, bio } })),
+    goneGifts,
+    voided,
+    dropGift: (id, reason, at) => setVoided((prev) => (prev.some((item) => item.id === id) ? prev : [{ id, at: voidStamp(at), reason: reason.trim() }, ...prev])),
     passwordHints,
     setPasswordHint: (phone, hint) => setPasswordHints((prev) => ({ ...prev, [phone]: hint })),
     adminWide,
@@ -4395,14 +4567,14 @@ export default function GlimmerPrototype() {
           按《产品需求文档》和《用户用例手册》V1.0 画出的可点击原型。左侧是页面目录，右侧是对应画面。金额和名单来自手册第 6 章的示例，不会写入真实数据。
         </Text>
         <Text size="small" tone="tertiary">
-          访客不登录。登录用户 139****0000 已认领支付宝「张先生」，并绑定受益人李明。管理员周宁 138****1001 为启用状态，从「我的」的「进入后台」进入项目列表。
+          访客不登录。登录用户 139****0000 已认领支付宝「张先生」，并绑定受益人李明。管理员周宁 138****1001 已录入，从「我的」的「进入后台」进入项目列表。
         </Text>
       </Stack>
       <Row gap={8} align="center" wrap>
         <Text size="small" tone="secondary">当前身份</Text>
         <Pill active={persona === "guest"} onClick={() => setPersona("guest")}>未登录访客</Pill>
         <Pill active={persona === "member"} onClick={() => setPersona("member")}>登录用户</Pill>
-        <Pill active={persona === "admin"} onClick={() => setPersona("admin")}>启用管理员</Pill>
+        <Pill active={persona === "admin"} onClick={() => setPersona("admin")}>管理员</Pill>
       </Row>
       <Grid columns="minmax(0, 220px) minmax(0, 1fr)" gap={20} align="start">
         <Stack gap={8} style={{ minWidth: 0 }}>
